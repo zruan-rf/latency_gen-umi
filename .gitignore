@@ -1,2 +1,5 @@
 .umi-venv
+.venv
 2026*/
+captures/
+cam4_*

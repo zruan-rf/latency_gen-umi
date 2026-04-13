@@ -1,10 +1,12 @@
+import csv
 import cv2 as cv
 import numpy as np
 from pathlib import Path
 
-INPUT_DIR = Path("/home/roboforce/Desktop/gen-umi/20260410_173539")
+INPUT_DIR = Path("/home/roboforce/Desktop/latency_gen-umi/captures")
 PATTERN = "cam4_*.jpg"
-OUTPUT_PATH = "/home/roboforce/Desktop/gen-umi/cam4_processed.mp4"
+OUTPUT_PATH = "/home/roboforce/Desktop/latency_gen-umi/cam4_processed.mp4"
+CSV_OUTPUT_PATH = "/home/roboforce/Desktop/latency_gen-umi/cam4_processed.csv"
 FPS = 20
 CROP_TOP = 200
 CROP_BOTTOM = 800
@@ -34,7 +36,11 @@ def detect_line_and_annotate(frame: np.ndarray) -> np.ndarray:
         length = np.hypot(dx, dy)
         if length > 0:
             unit_vector = (dx / length, dy / length)
-            vector_text = f"Unit vector = ({unit_vector[0]:.3f}, {unit_vector[1]:.3f})"
+            # Canonicalize: always point into the right half-plane (ux >= 0, or ux==0 and uy >= 0)
+            if unit_vector[0] < 0 or (unit_vector[0] == 0.0 and unit_vector[1] < 0):
+                unit_vector = (-unit_vector[0], -unit_vector[1])
+                line_endpoints = (x2, y2, x1, y1)
+            vector_text = f"Unit vector = ({unit_vector[0]:.5f}, {unit_vector[1]:.5f})"
 
     if unit_vector is None:
         contours, _ = cv.findContours(edges, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
@@ -46,7 +52,10 @@ def detect_line_and_annotate(frame: np.ndarray) -> np.ndarray:
                     unit_vector = (float(vx), float(vy))
                     norm = np.hypot(unit_vector[0], unit_vector[1])
                     unit_vector = (unit_vector[0] / norm, unit_vector[1] / norm)
-                    vector_text = f"Unit vector = ({unit_vector[0]:.3f}, {unit_vector[1]:.3f})"
+                    # Canonicalize: always point into the right half-plane (ux >= 0, or ux==0 and uy >= 0)
+                    if unit_vector[0] < 0 or (unit_vector[0] == 0.0 and unit_vector[1] < 0):
+                        unit_vector = (-unit_vector[0], -unit_vector[1])
+                    vector_text = f"Unit vector = ({unit_vector[0]:.5f}, {unit_vector[1]:.5f})"
                     cx, cy = cropped.shape[1] / 2, cropped.shape[0] / 2
                     length = min(cropped.shape[1], cropped.shape[0]) * 0.45
                     x1 = int(cx - unit_vector[0] * length)
@@ -62,7 +71,7 @@ def detect_line_and_annotate(frame: np.ndarray) -> np.ndarray:
         cv.arrowedLine(line_img, (x1, y1), arrow_tip, color=(0, 255, 0), thickness=3, tipLength=0.15)
         cv.circle(line_img, (x1, y1), radius=6, color=(0, 255, 0), thickness=-1)
     cv.putText(line_img, vector_text, (20, 30), cv.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv.LINE_AA)
-    return line_img
+    return line_img, unit_vector
 
 
 if __name__ == "__main__":
@@ -74,23 +83,45 @@ if __name__ == "__main__":
     if sample is None:
         raise SystemExit(f"Failed to read sample image {image_paths[0]}")
 
+    # Load capture log for cam4 timestamps
+    capture_data = {}
+    with open(str(INPUT_DIR / "capture_log.csv"), newline="") as f:
+        for row in csv.DictReader(f):
+            if row["camera_id"] == "4":
+                capture_data[row["filename"]] = (
+                    row["monotonic_ns"],
+                    row["captured_time_ns"],
+                )
+
     frame_height = CROP_BOTTOM - CROP_TOP
     frame_width = CROP_RIGHT - CROP_LEFT
     fourcc = cv.VideoWriter_fourcc(*"mp4v")
     writer = cv.VideoWriter(str(OUTPUT_PATH), fourcc, FPS, (frame_width, frame_height))
 
     print(f"Writing video to {OUTPUT_PATH} with {len(image_paths)} frames...")
-    for index, image_path in enumerate(image_paths, start=1):
-        image = cv.imread(str(image_path))
-        if image is None:
-            print(f"Warning: failed to read {image_path}, skipping")
-            continue
+    with open(CSV_OUTPUT_PATH, "w", newline="") as csv_file:
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(["monotonic_ns", "captured_time_ns", "vector_x", "vector_y"])
 
-        frame = detect_line_and_annotate(image)
-        writer.write(frame)
+        for index, image_path in enumerate(image_paths, start=1):
+            image = cv.imread(str(image_path))
+            if image is None:
+                print(f"Warning: failed to read {image_path}, skipping")
+                continue
 
-        if index % 100 == 0 or index == len(image_paths):
-            print(f"Processed {index}/{len(image_paths)} frames")
+            frame, unit_vector = detect_line_and_annotate(image)
+            writer.write(frame)
+
+            timestamps = capture_data.get(image_path.name)
+            if timestamps is not None:
+                monotonic_ns, captured_time_ns = timestamps
+                vx = f"{unit_vector[0]:.8f}" if unit_vector is not None else ""
+                vy = f"{unit_vector[1]:.8f}" if unit_vector is not None else ""
+                csv_writer.writerow([monotonic_ns, captured_time_ns, vx, vy])
+
+            if index % 100 == 0 or index == len(image_paths):
+                print(f"Processed {index}/{len(image_paths)} frames")
 
     writer.release()
     print(f"Video generation complete: {OUTPUT_PATH}")
+    print(f"CSV generation complete: {CSV_OUTPUT_PATH}")
