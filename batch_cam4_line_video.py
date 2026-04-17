@@ -3,7 +3,7 @@ import cv2 as cv
 import numpy as np
 from pathlib import Path
 
-INPUT_DIR = Path("/home/roboforce/Desktop/latency_gen-umi/captures")
+INPUT_DIR = Path("/home/roboforce/Desktop/latency_gen-umi/20260410_173539")
 PATTERN = "cam4_*.jpg"
 OUTPUT_PATH = "/home/roboforce/Desktop/latency_gen-umi/cam4_processed.mp4"
 CSV_OUTPUT_PATH = "/home/roboforce/Desktop/latency_gen-umi/cam4_processed.csv"
@@ -36,8 +36,8 @@ def detect_line_and_annotate(frame: np.ndarray) -> np.ndarray:
         length = np.hypot(dx, dy)
         if length > 0:
             unit_vector = (dx / length, dy / length)
-            # Canonicalize: always point into the right half-plane (ux >= 0, or ux==0 and uy >= 0)
-            if unit_vector[0] < 0 or (unit_vector[0] == 0.0 and unit_vector[1] < 0):
+            # Canonicalize: always point upward (uy > 0, or uy==0 and ux >= 0)
+            if unit_vector[1] < 0 or (unit_vector[1] == 0.0 and unit_vector[0] < 0):
                 unit_vector = (-unit_vector[0], -unit_vector[1])
                 line_endpoints = (x2, y2, x1, y1)
             vector_text = f"Unit vector = ({unit_vector[0]:.5f}, {unit_vector[1]:.5f})"
@@ -52,8 +52,8 @@ def detect_line_and_annotate(frame: np.ndarray) -> np.ndarray:
                     unit_vector = (float(vx), float(vy))
                     norm = np.hypot(unit_vector[0], unit_vector[1])
                     unit_vector = (unit_vector[0] / norm, unit_vector[1] / norm)
-                    # Canonicalize: always point into the right half-plane (ux >= 0, or ux==0 and uy >= 0)
-                    if unit_vector[0] < 0 or (unit_vector[0] == 0.0 and unit_vector[1] < 0):
+                    # Canonicalize: always point upward (uy > 0, or uy==0 and ux >= 0)
+                    if unit_vector[1] < 0 or (unit_vector[1] == 0.0 and unit_vector[0] < 0):
                         unit_vector = (-unit_vector[0], -unit_vector[1])
                     vector_text = f"Unit vector = ({unit_vector[0]:.5f}, {unit_vector[1]:.5f})"
                     cx, cy = cropped.shape[1] / 2, cropped.shape[0] / 2
