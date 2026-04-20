@@ -2,20 +2,29 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
 
-path = "/home/roboforce/Desktop/gen-umi/20260410_173539/cam4_24276935100461.jpg"
+path = "/home/roboforce/Desktop/latency_gen-umi/20260419_142706/captures/790541308155782.jpg"
 img = cv.imread(path)
 img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
 
-cropped = img[200:800, 300:1300]
+CROP_TOP = 50
+CROP_BOTTOM = 450
+CROP_LEFT = 0
+CROP_RIGHT = 400
+
+cropped = img[CROP_TOP:CROP_BOTTOM, CROP_LEFT:CROP_RIGHT]
 
 # Convert to grayscale and detect edges for line extraction.
 gray = cv.cvtColor(cropped, cv.COLOR_RGB2GRAY)
-gray = cv.GaussianBlur(gray, (5, 5), 0)
 
-edges = cv.Canny(gray, 50, 150, apertureSize=3)
+# Enhance contrast before edge detection (helps with faint lines on white paper).
+clahe = cv.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+gray = clahe.apply(gray)
+gray = cv.GaussianBlur(gray, (3, 3), 0)
+
+edges = cv.Canny(gray, 20, 80, apertureSize=3)
 
 # Try probabilistic Hough transform first.
-lines = cv.HoughLinesP(edges, rho=1, theta=np.pi / 180, threshold=60, minLineLength=80, maxLineGap=20)
+lines = cv.HoughLinesP(edges, rho=1, theta=np.pi / 180, threshold=90, minLineLength=100, maxLineGap=10)
 
 line_img = cropped.copy()
 vector_text = "No line found"
@@ -61,9 +70,9 @@ if unit_vector is not None and line_endpoints is not None:
     arrow_tip = (int(x1 + unit_vector[0] * 80), int(y1 + unit_vector[1] * 80))
     cv.arrowedLine(line_img, (x1, y1), arrow_tip, color=(0, 255, 0), thickness=3, tipLength=0.15)
     cv.circle(line_img, (x1, y1), radius=6, color=(0, 255, 0), thickness=-1)
-    cv.putText(line_img, vector_text, (20, 30), cv.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv.LINE_AA)
+    cv.putText(line_img, vector_text, (20, 20), cv.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv.LINE_AA)
 else:
-    cv.putText(line_img, vector_text, (20, 30), cv.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv.LINE_AA)
+    cv.putText(line_img, vector_text, (20, 20), cv.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv.LINE_AA)
 
 # Plot the cropped image and the extracted line/vector overlay.
 fig, ax = plt.subplots(1, 2, figsize=(14, 6))
