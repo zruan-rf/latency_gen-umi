@@ -2,7 +2,7 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
 
-path = "/home/roboforce/Desktop/latency_gen-umi/20260419_142706/captures/790541308155782.jpg"
+path = "/home/roboforce/Desktop/latency_gen-umi/20260420_124207/captures/870638451791428.jpg"
 img = cv.imread(path)
 img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
 

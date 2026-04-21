@@ -3,15 +3,15 @@ import cv2 as cv
 import numpy as np
 from pathlib import Path
 
-INPUT_DIR = Path("/home/roboforce/Desktop/latency_gen-umi/20260419_142706/captures")
+INPUT_DIR = Path("/home/roboforce/Desktop/latency_gen-umi/20260420_124207/captures")
 PATTERN = "*.jpg"
 OUTPUT_PATH = "/home/roboforce/Desktop/latency_gen-umi/realsense_processed.mp4"
 CSV_OUTPUT_PATH = "/home/roboforce/Desktop/latency_gen-umi/realsense_processed.csv"
 FPS = 20
 CROP_TOP = 50
 CROP_BOTTOM = 450
-CROP_LEFT = 80
-CROP_RIGHT = 400
+CROP_LEFT = 150
+CROP_RIGHT = 600
 
 
 def detect_line_and_annotate(frame: np.ndarray) -> np.ndarray:
