@@ -2,6 +2,6 @@
 .venv
 2026*/
 captures/
-cam4_*
 *.csv
 *.mp4
+__pycache__/
