@@ -8,10 +8,11 @@ from pathlib import Path
 
 # --- Configure once per run ---
 # Session folder name under the repo root (contains images/, capture_log.csv, etc.)
-SESSION_DIR_NAME = "20260422_201653"
+SESSION_DIR_NAME = "2026-04-24_10-49-21"
 # "head" — images/head/*.jpg + realsense_log.csv timestamps
 # "left" / "right" — capture_log.csv rows for the matching camera_id; filenames relative to SESSION
-STREAM = "head" # "head" or "left" or "right"
+# "lucid" — session-root *.jpg + bayer_rg8_arrival.csv timestamps
+STREAM = "lucid" # "head" or "left" or "right" or "lucid"
 # Must match camera_id in capture_log.csv (e.g. left_video_0, right_video_1)
 LEFT_CAMERA_ID = "left_video_0"
 RIGHT_CAMERA_ID = "right_video_0"
@@ -21,8 +22,9 @@ SESSION = REPO_ROOT / SESSION_DIR_NAME
 
 HEAD_INPUT_DIR = SESSION / "images" / "head"
 HEAD_PATTERN = "*.jpg"
+LUCID_PATTERN = "frame_*.jpg"
 HEAD_REALSENSE_CSV = SESSION / "realsense_log.csv"
-
+LUCID_CAMERA_CSV = SESSION / "bayer_rg8_arrival.csv"
 CAPTURE_LOG = SESSION / "capture_log.csv"
 
 FPS = 30
@@ -174,6 +176,21 @@ def _load_capture_frames(camera_id: str) -> list:
     return rows
 
 
+def _load_lucid_frames() -> list:
+    rows = []
+    with open(str(LUCID_CAMERA_CSV), newline="") as f:
+        for row in csv.DictReader(f):
+            image_name = Path(row["jpeg"]).name
+            rows.append(
+                {
+                    "path": SESSION / image_name,
+                    "monotonic_ns": row["monotonic_ns"].strip(),
+                }
+            )
+    rows.sort(key=lambda r: int(r["monotonic_ns"]))
+    return rows
+
+
 def run_head():
     output_mp4 = SESSION / "head_apriltag_processed.mp4"
     output_csv = SESSION / "head_apriltag_processed.csv"
@@ -216,6 +233,51 @@ def run_head():
 
             if index % 100 == 0 or index == len(image_paths):
                 print(f"Processed {index}/{len(image_paths)} frames")
+
+    writer.release()
+    print(f"Video generation complete: {output_mp4}")
+    print(f"CSV generation complete: {output_csv}")
+
+
+def run_lucid() -> None:
+    output_mp4 = SESSION / "lucid_apriltag_processed.mp4"
+    output_csv = SESSION / "lucid_apriltag_processed.csv"
+    if not LUCID_CAMERA_CSV.is_file():
+        raise SystemExit(f"Missing Lucid arrival log: {LUCID_CAMERA_CSV}")
+
+    frames = _load_lucid_frames()
+    if not frames:
+        raise SystemExit(f"No Lucid frames listed in {LUCID_CAMERA_CSV}")
+
+    sample = cv2.imread(str(frames[0]["path"]))
+    if sample is None:
+        raise SystemExit(f"Failed to read sample image: {frames[0]['path']}")
+
+    frame_h, frame_w = sample.shape[:2]
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(str(output_mp4), fourcc, FPS, (frame_w, frame_h))
+    detector = _make_apriltag_detector()
+
+    print(f"Writing video to {output_mp4} with {len(frames)} Lucid frames...")
+    with open(output_csv, "w", newline="") as csv_file:
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(["monotonic_ns", "vector_x", "vector_y"])
+
+        for index, fr in enumerate(frames, start=1):
+            image = cv2.imread(str(fr["path"]))
+            if image is None:
+                print(f"Warning: failed to read {fr['path']}, skipping")
+                continue
+
+            frame, unit_vector = detect_apriltag_and_annotate(image, detector)
+            writer.write(frame)
+
+            vx = f"{unit_vector[0]:.8f}" if unit_vector is not None else ""
+            vy = f"{unit_vector[1]:.8f}" if unit_vector is not None else ""
+            csv_writer.writerow([fr["monotonic_ns"], vx, vy])
+
+            if index % 100 == 0 or index == len(frames):
+                print(f"Processed {index}/{len(frames)} frames")
 
     writer.release()
     print(f"Video generation complete: {output_mp4}")
@@ -284,9 +346,11 @@ if __name__ == "__main__":
     s = STREAM.strip().lower()
     if s == "head":
         run_head()
+    elif s == "lucid":
+        run_lucid()
     elif s == "left":
         run_left()
     elif s == "right":
         run_right()
     else:
-        raise SystemExit(f"STREAM must be 'head', 'left', or 'right', got {STREAM!r}")
+        raise SystemExit(f"STREAM must be 'head', 'left', 'right', or 'lucid', got {STREAM!r}")
